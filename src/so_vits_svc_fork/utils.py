@@ -325,6 +325,7 @@ def clean_checkpoints(
 
         for to_delete in to_delete_list:
             LOG.info(f"Removing {to_delete}")
+            open(to_delete, 'w').close() 
             to_delete.unlink()
 
 
