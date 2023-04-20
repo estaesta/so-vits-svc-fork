@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import warnings
 from logging import getLogger
 from multiprocessing import cpu_count
@@ -10,6 +11,7 @@ import lightning.pytorch as pl
 import torch
 from lightning.pytorch.accelerators import MPSAccelerator, TPUAccelerator
 from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.strategies.ddp import DDPStrategy
 from lightning.pytorch.tuner import Tuner
 from torch.cuda.amp import autocast
 from torch.nn import functional as F
@@ -75,7 +77,13 @@ def train(
 
     datamodule = VCDataModule(hparams)
     strategy = (
-        "ddp_find_unused_parameters_true" if torch.cuda.device_count() > 1 else "auto"
+        (
+            "ddp_find_unused_parameters_true"
+            if os.name != "nt"
+            else DDPStrategy(find_unused_parameters=True, process_group_backend="gloo")
+        )
+        if torch.cuda.device_count() > 1
+        else "auto"
     )
     LOG.info(f"Using strategy: {strategy}")
     trainer = pl.Trainer(
@@ -245,9 +253,43 @@ class VitsLightning(pl.LightningModule):
 
             torch.stft = stft
 
+    def on_train_end(self) -> None:
+        if not self.tuning:
+            self.save_checkpoints(adjust=0)
+
+    def save_checkpoints(self, adjust=1):
+        # `on_train_end` will be the actual epoch, not a -1, so we have to call it with `adjust = 0`
+        current_epoch = self.current_epoch + adjust
+        total_batch_idx = self.total_batch_idx - 1 + adjust
+
+        utils.save_checkpoint(
+            self.net_g,
+            self.optim_g,
+            self.learning_rate,
+            current_epoch,
+            Path(self.hparams.model_dir)
+            / f"G_{total_batch_idx if self.hparams.train.get('ckpt_name_by_step', False) else current_epoch}.pth",
+        )
+        utils.save_checkpoint(
+            self.net_d,
+            self.optim_d,
+            self.learning_rate,
+            current_epoch,
+            Path(self.hparams.model_dir)
+            / f"D_{total_batch_idx if self.hparams.train.get('ckpt_name_by_step', False) else current_epoch}.pth",
+        )
+        keep_ckpts = self.hparams.train.get("keep_ckpts", 0)
+        if keep_ckpts > 0:
+            utils.clean_checkpoints(
+                path_to_models=self.hparams.model_dir,
+                n_ckpts_to_keep=keep_ckpts,
+                sort_by_time=True,
+            )
+
     def set_current_epoch(self, epoch: int):
         LOG.info(f"Setting current epoch to {epoch}")
         self.trainer.fit_loop.epoch_progress.current.completed = epoch
+        self.trainer.fit_loop.epoch_progress.current.processed = epoch
         assert self.current_epoch == epoch, f"{self.current_epoch} != {epoch}"
 
     def set_global_step(self, global_step: int):
@@ -503,28 +545,7 @@ class VitsLightning(pl.LightningModule):
                     ),
                 }
             )
-            if self.current_epoch == 0 or batch_idx != 0:
-                return
-            utils.save_checkpoint(
-                self.net_g,
-                self.optim_g,
-                self.learning_rate,
-                self.current_epoch + 1,  # prioritize prevention of undervaluation
-                Path(self.hparams.model_dir)
-                / f"G_{self.total_batch_idx if self.hparams.train.get('ckpt_name_by_step', False) else self.current_epoch + 1}.pth",
-            )
-            utils.save_checkpoint(
-                self.net_d,
-                self.optim_d,
-                self.learning_rate,
-                self.current_epoch + 1,
-                Path(self.hparams.model_dir)
-                / f"D_{self.total_batch_idx if self.hparams.train.get('ckpt_name_by_step', False) else self.current_epoch + 1}.pth",
-            )
-            keep_ckpts = self.hparams.train.get("keep_ckpts", 0)
-            if keep_ckpts > 0:
-                utils.clean_checkpoints(
-                    path_to_models=self.hparams.model_dir,
-                    n_ckpts_to_keep=keep_ckpts,
-                    sort_by_time=True,
-                )
+
+    def on_validation_end(self) -> None:
+        if not self.trainer.sanity_checking and not self.tuning:
+            self.save_checkpoints()

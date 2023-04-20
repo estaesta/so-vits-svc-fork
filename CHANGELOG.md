@@ -2,6 +2,18 @@
 
 <!--next-version-placeholder-->
 
+## v3.10.3 (2023-04-19)
+### Fix
+* **train:** Don't save model when tuning for auto batch size ([`2311a35`](https://github.com/voicepaw/so-vits-svc-fork/commit/2311a35c36315123c87b7f20dde3c4dda723bea3))
+
+## v3.10.2 (2023-04-19)
+### Fix
+* **train:** Properly stop training after `epochs` has been reached ([`f9bb3d8`](https://github.com/voicepaw/so-vits-svc-fork/commit/f9bb3d86605321288f11387bc853143378c3284e))
+
+## v3.10.1 (2023-04-19)
+### Fix
+* **train:** Support ddp in Windows (gloo backend) ([#394](https://github.com/34j/so-vits-svc-fork/issues/394)) ([`bcb0507`](https://github.com/34j/so-vits-svc-fork/commit/bcb05078d8ca7a6ac681de919552b3a190b2cd9b))
+
 ## v3.10.0 (2023-04-18)
 ### Feature
 * Replace `fairseq` with `transformers` ([#385](https://github.com/34j/so-vits-svc-fork/issues/385)) ([`a2fe0f3`](https://github.com/34j/so-vits-svc-fork/commit/a2fe0f376d33f02987c91a57bd90a794de90a0e1))
