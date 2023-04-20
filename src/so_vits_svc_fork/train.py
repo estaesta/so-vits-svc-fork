@@ -280,11 +280,14 @@ class VitsLightning(pl.LightningModule):
         )
         keep_ckpts = self.hparams.train.get("keep_ckpts", 0)
         if keep_ckpts > 0:
-            utils.clean_checkpoints(
-                path_to_models=self.hparams.model_dir,
-                n_ckpts_to_keep=keep_ckpts,
-                sort_by_time=True,
-            )
+            try:
+                utils.clean_checkpoints(
+                    path_to_models=self.hparams.model_dir,
+                    n_ckpts_to_keep=keep_ckpts,
+                    sort_by_time=True,
+                )
+            except Exception as e:
+                LOG.warning("Caught an exception: " + str(e) +". Might be expected when using multi gpu.")
 
     def set_current_epoch(self, epoch: int):
         LOG.info(f"Setting current epoch to {epoch}")
